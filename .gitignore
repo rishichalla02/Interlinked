@@ -25,3 +25,6 @@ dist-ssr
 # .gitignore
 .env
 node_modules/
+
+# bfg
+bfg-1.15.0.jar

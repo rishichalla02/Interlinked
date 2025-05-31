@@ -23,7 +23,7 @@ const Chat = () => {
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
+  }, [chat?.messages]);
 
   useEffect(() => {
     const unSub = onSnapshot(doc(db, "chats", chatId), (res) => {
@@ -123,12 +123,13 @@ const Chat = () => {
       </div>
       <div className="center">
 
-        {chat?.messages.map((message) => (
-          <div className={message.senderId === currentUser.id ? "message own" : "message"} key={message?.createAt}>
+        {chat?.messages.map((message, index) => (
+          <div
+            className={message.senderId === currentUser.id ? "message own" : "message"}
+            key={message?.createAt ? `${message.createAt}_${message.senderId}` : `${index}_${message.senderId}`}>
             <div className="texts">
               {message.img && <img src={message.img} alt="" />}
               <p>{message.text}</p>
-              {/* <span>{message}</span> */}
             </div>
           </div>
         ))}
@@ -153,9 +154,9 @@ const Chat = () => {
           <img src="./mic.png" alt="" />
         </div>
         <input type="text" placeholder={(isCurrentUserBlocked || isReceiverBlocked) ? "You cannot send a message !" : "Type a message.."}
-          value = {text} 
-          onChange = {e => setText(e.target.value)}
-          disabled = {isCurrentUserBlocked || isReceiverBlocked} />
+          value={text}
+          onChange={e => setText(e.target.value)}
+          disabled={isCurrentUserBlocked || isReceiverBlocked} />
         <div className="emoji">
           <img src="./emoji.png" alt="" onClick={() => setOpen((prev) => !prev)} />
           <div className="picker">

@@ -1,0 +1,9 @@
+ {chat?.messages.map((message) => (
+          <div className={message.senderId === currentUser.id ? "message own" : "message"} key={message?.createAt}>
+            <div className="texts">
+              {message.img && <img src={message.img} alt="" />}
+              <p>{message.text}</p>
+              {/* <span>{message}</span> */}
+            </div>
+          </div>
+        ))}

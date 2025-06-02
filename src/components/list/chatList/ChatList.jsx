@@ -15,29 +15,73 @@ const ChatList = () => {
   const { chatId, changeChat } = useChatStore();
 
   useEffect(() => {
-    const unSub = onSnapshot(doc(db, "userchats", currentUser.id), async (res) => {
-      const items = res.data().chats;
+    // Check if currentUser exists before making Firestore calls
+    if (!currentUser?.id) return;
 
-      const Promises = items.map(async (item) => {
-        const userDocRef = doc(db, "users", item.receiverId);
-        const userDocSnap = await getDoc(userDocRef);
+    const unSub = onSnapshot(
+      doc(db, "userchats", currentUser.id),
+      async (res) => {
+        // Check if document exists and has chats data
+        if (!res.exists() || !res.data()?.chats) {
+          setChats([]);
+          return;
+        }
 
-        const user = userDocSnap.data();
+        const items = res.data().chats;
 
-        return { ...item, user };
-      });
+        const Promises = items.map(async (item) => {
+          try {
+            const userDocRef = doc(db, "users", item.receiverId);
+            const userDocSnap = await getDoc(userDocRef);
 
-      const chatData = await Promise.all(Promises);
+            if (userDocSnap.exists()) {
+              const user = userDocSnap.data();
+              return { ...item, user };
+            } else {
+              // If user document doesn't exist, create a placeholder
+              return {
+                ...item,
+                user: {
+                  username: "Unknown User",
+                  avatar: "./avatar.png",
+                  id: item.receiverId,
+                  blocked: []
+                }
+              };
+            }
+          } catch (error) {
+            console.log("Error fetching user data for:", item.receiverId, error);
+            // Return a placeholder user object when there's a permission error
+            return {
+              ...item,
+              user: {
+                username: "User",
+                avatar: "./avatar.png",
+                id: item.receiverId,
+                blocked: []
+              }
+            };
+          }
+        });
 
-      setChats(chatData.sort((a, b) => b.updatedAt - a.updatedAt));
+        const chatData = await Promise.all(Promises);
 
-    });
+        setChats(chatData.sort((a, b) => b.updatedAt - a.updatedAt));
+      },
+      (error) => {
+        console.log("Error listening to userchats:", error);
+        setChats([]);
+      }
+    );
+
     return () => {
       unSub();
     };
-  }, [currentUser.id]);
+  }, [currentUser?.id]); // Use optional chaining
 
   const handleSelect = async (chat) => {
+    // Check if currentUser exists before proceeding
+    if (!currentUser?.id) return;
 
     const userChats = chats.map(item => {
       const { user, ...rest } = item;
@@ -46,23 +90,27 @@ const ChatList = () => {
 
     const chatIndex = userChats.findIndex(item => item.chatId === chat.chatId);
 
+    // Check if chat was found
+    if (chatIndex === -1) return;
+
     userChats[chatIndex].isSeen = true;
 
     const userChatsRef = doc(db, "userchats", currentUser.id);
 
     try {
-
       await updateDoc(userChatsRef, {
         chats: userChats,
       });
       changeChat(chat.chatId, chat.user);
     } catch (err) {
-      console.log(err);
+      console.log("Error updating chat:", err);
+      // Still allow chat selection even if update fails
+      changeChat(chat.chatId, chat.user);
     }
   };
 
-  const filteredChats = chats.filter(c => 
-    c.user.username.toLowerCase().includes(input.toLowerCase())
+  const filteredChats = chats.filter(c =>
+    c.user?.username?.toLowerCase().includes(input.toLowerCase())
   );
 
   return (
@@ -78,15 +126,15 @@ const ChatList = () => {
 
         <div className="item" key={chat.chatId} onClick={() => handleSelect(chat)} style={{ backgroundColor: chat?.isSeen ? "transparent" : "#5183fe" }}>
           <img src=
-            {chat.user.blocked.includes(currentUser.id)
+            {chat.user?.blocked?.includes(currentUser.id)
               ? "./avatar.png"
-              : chat.user.avatar || "./avatar.png"
+              : chat.user?.avatar || "./avatar.png"
             } alt="" />
           <div className="texts">
             <span>
-              {chat.user.blocked.includes(currentUser.id)
+              {chat.user?.blocked?.includes(currentUser.id)
                 ? "User"
-                : chat.user.username}
+                : chat.user?.username}
             </span>
             <p>{chat.lastMessage}</p>
           </div>

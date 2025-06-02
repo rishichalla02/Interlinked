@@ -11,12 +11,25 @@ import { useChatStore } from "./lib/chatStore";
 
 const App = () => {
 
-  const {currentUser, isLoading, fetchUserInfo} = useUserStore();
+  const { currentUser, isLoading, fetchUserInfo } = useUserStore();
   const { chatId } = useChatStore();
 
   useEffect(() => {
     const unSub = onAuthStateChanged(auth, (user) => {
-      fetchUserInfo(user?.uid);
+      if (user) {
+        // User is signed in
+        fetchUserInfo(user.uid);
+      } else {
+        // User is signed out - clear the user store
+        useUserStore.setState({ currentUser: null, isLoading: false });
+        // Also clear chat store when user logs out
+        useChatStore.setState({ 
+          chatId: null, 
+          user: null, 
+          isCurrentUserBlocked: false, 
+          isReceiverBlocked: false 
+        });
+      }
     });
 
     return () => {

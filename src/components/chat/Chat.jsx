@@ -28,9 +28,9 @@ const Chat = () => {
 
   useEffect(() => {
     if (!chatId) return;
-    
+
     const unSub = onSnapshot(
-      doc(db, "chats", chatId), 
+      doc(db, "chats", chatId),
       (res) => {
         if (res.exists()) {
           setChat(res.data());
@@ -61,6 +61,78 @@ const Chat = () => {
     }
   }
 
+  const updateUserChats = async (messageText) => {
+    const updatePromises = [];
+
+    // Update current user's chat list
+    const updateCurrentUser = async () => {
+      try {
+        const currentUserChatsRef = doc(db, "userchats", currentUser.id);
+        const currentUserChatsSnapshot = await getDoc(currentUserChatsRef);
+
+        if (currentUserChatsSnapshot.exists()) {
+          const currentUserChatsData = currentUserChatsSnapshot.data();
+          const chatIndex = currentUserChatsData.chats?.findIndex((c) => c.chatId === chatId);
+
+          if (chatIndex !== -1 && chatIndex !== undefined) {
+            const updatedChats = [...currentUserChatsData.chats];
+            updatedChats[chatIndex] = {
+              ...updatedChats[chatIndex],
+              lastMessage: messageText,
+              isSeen: true,
+              updatedAt: Date.now(),
+            };
+
+            await updateDoc(currentUserChatsRef, {
+              chats: updatedChats,
+            });
+          }
+        }
+      } catch (error) {
+        console.warn("Failed to update current user's chat list:", error);
+      }
+    };
+
+    // Update receiver's chat list
+    const updateReceiver = async () => {
+      if (!user?.id || user.id === currentUser.id) return;
+      
+      try {
+        const receiverChatsRef = doc(db, "userchats", user.id);
+        const receiverChatsSnapshot = await getDoc(receiverChatsRef);
+
+        if (receiverChatsSnapshot.exists()) {
+          const receiverChatsData = receiverChatsSnapshot.data();
+          const receiverChatIndex = receiverChatsData.chats?.findIndex((c) => c.chatId === chatId);
+
+          if (receiverChatIndex !== -1 && receiverChatIndex !== undefined) {
+            const updatedReceiverChats = [...receiverChatsData.chats];
+            updatedReceiverChats[receiverChatIndex] = {
+              ...updatedReceiverChats[receiverChatIndex],
+              lastMessage: messageText,
+              isSeen: false,
+              updatedAt: Date.now(),
+            };
+
+            await updateDoc(receiverChatsRef, {
+              chats: updatedReceiverChats,
+            });
+          }
+        }
+      } catch (error) {
+        console.warn("Failed to update receiver's chat list:", error);
+        // This is expected to fail with current rules, but message still sent
+      }
+    };
+
+    // Run both updates
+    updatePromises.push(updateCurrentUser());
+    updatePromises.push(updateReceiver());
+
+    // Wait for both but don't fail if receiver update fails
+    await Promise.allSettled(updatePromises);
+  };
+
   const handleSend = async () => {
     if (text === "" || loading) return;
     if (!currentUser?.id || !chatId) {
@@ -79,7 +151,7 @@ const Chat = () => {
       //   imgUrl = await upload(img.file);
       // }
 
-      // First, try to update the chat document
+      // First, update the chat document with the new message
       await updateDoc(doc(db, "chats", chatId), {
         messages: arrayUnion({
           senderId: currentUser.id,
@@ -96,44 +168,12 @@ const Chat = () => {
         url: "",
       });
 
-      // Try to update user chats, but don't fail if this doesn't work
-      const userIDs = [currentUser.id, user?.id].filter(Boolean);
-
-      // Use Promise.allSettled to handle partial failures
-      const updatePromises = userIDs.map(async (id) => {
-        try {
-          const userChatsRef = doc(db, "userchats", id);
-          const userChatsSnapshot = await getDoc(userChatsRef);
-
-          if (userChatsSnapshot.exists()) {
-            const userChatsData = userChatsSnapshot.data();
-            const chatIndex = userChatsData.chats?.findIndex((c) => c.chatId === chatId);
-
-            if (chatIndex !== -1 && chatIndex !== undefined) {
-              const updatedChats = [...userChatsData.chats];
-              updatedChats[chatIndex] = {
-                ...updatedChats[chatIndex],
-                lastMessage: messageText,
-                isSeen: id === currentUser.id,
-                updatedAt: Date.now(),
-              };
-
-              await updateDoc(userChatsRef, {
-                chats: updatedChats,
-              });
-            }
-          }
-        } catch (userChatError) {
-          console.warn(`Failed to update user chat for user ${id}:`, userChatError);
-          // Don't throw - just log the warning
-        }
-      });
-
-      await Promise.allSettled(updatePromises);
+      // Update user chats (both sender and receiver)
+      await updateUserChats(messageText);
 
     } catch (err) {
       console.error("Error sending message:", err);
-      
+
       // Handle specific Firebase errors
       if (err.code === 'permission-denied') {
         setError("Permission denied. Please check your access rights.");
@@ -186,7 +226,7 @@ const Chat = () => {
             textAlign: 'center'
           }}>
             {error}
-            <button 
+            <button
               onClick={() => setError("")}
               style={{
                 marginLeft: '10px',
@@ -231,36 +271,36 @@ const Chat = () => {
           <label htmlFor="file">
             <img src="./img.png" alt="" />
           </label>
-          <input 
-            type="file" 
-            id="file" 
-            style={{ display: "none" }} 
+          <input
+            type="file"
+            id="file"
+            style={{ display: "none" }}
             onChange={handleImg}
             accept="image/*"
           />
           <img src="./camera.png" alt="" />
           <img src="./mic.png" alt="" />
         </div>
-        
-        <input 
-          type="text" 
+
+        <input
+          type="text"
           placeholder={
-            (isCurrentUserBlocked || isReceiverBlocked) 
-              ? "You cannot send a message!" 
-              : loading 
-                ? "Sending..." 
+            (isCurrentUserBlocked || isReceiverBlocked)
+              ? "You cannot send a message!"
+              : loading
+                ? "Sending..."
                 : "Type a message.."
           }
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyPress={handleKeyPress}
-          disabled={isCurrentUserBlocked || isReceiverBlocked || loading} 
+          disabled={isCurrentUserBlocked || isReceiverBlocked || loading}
         />
-        
+
         <div className="emoji">
-          <img 
-            src="./emoji.png" 
-            alt="" 
+          <img
+            src="./emoji.png"
+            alt=""
             onClick={() => setOpen((prev) => !prev)}
             style={{ opacity: loading ? 0.5 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
           />
@@ -268,12 +308,12 @@ const Chat = () => {
             <EmojiPicker open={open && !loading} onEmojiClick={handleEmoji} />
           </div>
         </div>
-        
-        <button 
-          className="sendButton" 
-          onClick={handleSend} 
+
+        <button
+          className="sendButton"
+          onClick={handleSend}
           disabled={isCurrentUserBlocked || isReceiverBlocked || loading || !text.trim()}
-          style={{ 
+          style={{
             opacity: (isCurrentUserBlocked || isReceiverBlocked || loading || !text.trim()) ? 0.5 : 1,
             cursor: (isCurrentUserBlocked || isReceiverBlocked || loading || !text.trim()) ? 'not-allowed' : 'pointer'
           }}
